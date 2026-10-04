@@ -19,3 +19,7 @@ python3 -m unittest discover -s proposals/tests -v
 The C harness verifies preserved file-open errors. It does not compile the Rust/kernel integration or establish firmware compatibility. `j293-spi-mode2.patch` remains unbuilt and untested. Follow the dossier's qualification gates before any hardware work.
 
 Report findings with the source revision, model, firmware version, operation, expected result, and redacted evidence. Never upload enrollment templates, SEP keybags, calibration data, credentials, or disk images. [Attribution](ATTRIBUTION.md) explains ownership and the mixed source terms. [Roadmap](ROADMAP.md) defines the next review gates.
+
+## Maintenance backlog
+
+The [GitHub Project](https://github.com/users/Connorbelez/projects/17) tracks the roadmap issues and release qualification. See [maintenance](MAINTAINERS.md) for ownership and review expectations.
