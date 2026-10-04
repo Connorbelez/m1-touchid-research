@@ -1,0 +1,9 @@
+name: Proposal
+description: Propose a focused improvement
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Problem, proposed behavior, and verification plan
+    validations:
+      required: true

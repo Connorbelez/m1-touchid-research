@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+/private/
+/build/
+
+# Device-specific secrets and opaque biometric state must stay out of git.
+mesa_calibration.bin
+mesacal-*.bin
+aurora-sep-*.bin
+apple-sep-catacomb-*.bin
+*.img
+*.img.zst

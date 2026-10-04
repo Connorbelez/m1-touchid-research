@@ -1,0 +1,21 @@
+name: Bug report
+description: A reproducible failure on a documented configuration
+title: "[Bug] "
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and environment
+      description: Repository revision, OS, dependency versions, model and page size where relevant. Omit private identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction, expected result, and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted verification output

@@ -1,0 +1,13 @@
+--- a/arch/arm64/boot/dts/apple/t8103-j293.dts
++++ b/arch/arm64/boot/dts/apple/t8103-j293.dts
+@@ -110,6 +110,10 @@
+ 
+ &mesa {
+ 	status = "okay";
++
++	/* J293 reports require mode 2; do not alter the J313 default. */
++	/delete-property/ spi-cpha;
++	spi-cpol;
+ 	enable-gpios = <&pinctrl_ap 108 GPIO_ACTIVE_HIGH>;
+ 	spi-cs-setup-delay-ns = <20>;
+ 	spi-cs-hold-delay-ns = <20>;

@@ -1,0 +1,139 @@
+--- a/drivers/soc/apple/store_shim.c
++++ b/drivers/soc/apple/store_shim.c
+@@ -48,7 +48,7 @@
+ {
+ 	struct file *f = open_as_kernel(path, O_RDWR | O_CREAT | O_LARGEFILE, 0600);
+ 
+-	return IS_ERR(f) ? NULL : f;
++	return f;
+ }
+ 
+ /*
+@@ -59,18 +59,18 @@
+ {
+ 	struct file *f = open_as_kernel(path, O_RDWR | O_CREAT | O_TRUNC | O_LARGEFILE, 0600);
+ 
+-	return IS_ERR(f) ? NULL : f;
++	return f;
+ }
+ 
+ /*
+- * Opens an existing file read-only, NULL if absent. O_RDONLY and no O_CREAT so
++ * Opens an existing file read-only, preserving the kernel error pointer. O_RDONLY and no O_CREAT so
+  * the seed cannot be created, truncated or written by mistake.
+  */
+ void *sep_store_open_ro(const char *path)
+ {
+ 	struct file *f = open_as_kernel(path, O_RDONLY | O_LARGEFILE, 0);
+ 
+-	return IS_ERR(f) ? NULL : f;
++	return f;
+ }
+ 
+ void *sep_store_open_block(const char *path, int writable)
+@@ -80,13 +80,24 @@
+ 					0);
+ 
+ 	if (IS_ERR(f))
+-		return NULL;
+-	if (!S_ISBLK(file_inode(f)->i_mode) ||
+-	    (writable && bdev_read_only(file_bdev(f)))) {
++		return f;
++	if (!S_ISBLK(file_inode(f)->i_mode)) {
+ 		filp_close(f, NULL);
+-		return NULL;
++		return ERR_PTR(-ENOTBLK);
++	}
++	if (writable && bdev_read_only(file_bdev(f))) {
++		filp_close(f, NULL);
++		return ERR_PTR(-EROFS);
+ 	}
+ 	return f;
++}
++
++/* Decode an open result before Rust constructs an owning StoreFile. */
++int sep_store_open_error(void *handle)
++{
++	if (!handle)
++		return -EIO;
++	return IS_ERR(handle) ? PTR_ERR(handle) : 0;
+ }
+ 
+ void sep_store_close(void *handle)
+--- a/drivers/soc/apple/shim.h
++++ b/drivers/soc/apple/shim.h
+@@ -39,6 +39,7 @@
+ void *sep_store_open_trunc(const char *path);
+ void *sep_store_open_ro(const char *path);
+ void *sep_store_open_block(const char *path, int writable);
++int sep_store_open_error(void *handle);
+ void sep_store_close(void *handle);
+ long long sep_store_size(void *handle);
+ long sep_store_read(void *handle, long long off, void *buf, size_t len);
+--- a/drivers/soc/apple/shim.rs
++++ b/drivers/soc/apple/shim.rs
+@@ -10,6 +10,7 @@
+     fn sep_store_open_trunc(path: *const c_char) -> *mut c_void;
+     fn sep_store_open_ro(path: *const c_char) -> *mut c_void;
+     fn sep_store_open_block(path: *const c_char, writable: c_int) -> *mut c_void;
++    fn sep_store_open_error(handle: *mut c_void) -> c_int;
+     fn sep_store_close(handle: *mut c_void);
+     fn sep_store_size(handle: *mut c_void) -> i64;
+     fn sep_store_read(handle: *mut c_void, off: i64, buf: *mut c_void, len: usize) -> c_long;
+@@ -47,41 +48,37 @@
+ }
+ 
+ impl StoreFile {
++    /// Accept only a live file; preserve every original open error.
++    fn from_open_result(handle: *mut c_void) -> Result<StoreFile> {
++        // SAFETY: the shim only classifies the pointer; it does not dereference it.
++        let error = unsafe { sep_store_open_error(handle) };
++        kernel::error::to_result(error)?;
++        Ok(StoreFile { handle })
++    }
++
+     pub(crate) fn open(path: &CStr) -> Result<StoreFile> {
+-        // SAFETY: `path` is NUL-terminated; the shim returns NULL on failure.
++        // SAFETY: `path` is NUL-terminated; the shim preserves error pointers on failure.
+         let handle = unsafe { sep_store_open(path.as_char_ptr()) };
+-        if handle.is_null() {
+-            return Err(ENOENT);
+-        }
+-        Ok(StoreFile { handle })
++        Self::from_open_result(handle)
+     }
+ 
+     pub(crate) fn open_trunc(path: &CStr) -> Result<StoreFile> {
+-        // SAFETY: `path` is NUL-terminated; the shim returns NULL on failure.
++        // SAFETY: `path` is NUL-terminated; the shim preserves error pointers on failure.
+         let handle = unsafe { sep_store_open_trunc(path.as_char_ptr()) };
+-        if handle.is_null() {
+-            return Err(ENOENT);
+-        }
+-        Ok(StoreFile { handle })
++        Self::from_open_result(handle)
+     }
+ 
+     pub(crate) fn open_readonly(path: &CStr) -> Result<StoreFile> {
+-        // SAFETY: `path` is NUL-terminated; the shim returns NULL on failure.
++        // SAFETY: `path` is NUL-terminated; the shim preserves error pointers on failure.
+         let handle = unsafe { sep_store_open_ro(path.as_char_ptr()) };
+-        if handle.is_null() {
+-            return Err(ENOENT);
+-        }
+-        Ok(StoreFile { handle })
++        Self::from_open_result(handle)
+     }
+ 
+     pub(crate) fn open_block(path: &CStr, writable: bool) -> Result<StoreFile> {
+         // SAFETY: `path` is NUL-terminated; the shim opens read-only unless
+         // explicitly asked to write, and rejects writes to a read-only device.
+         let handle = unsafe { sep_store_open_block(path.as_char_ptr(), c_int::from(writable)) };
+-        if handle.is_null() {
+-            return Err(ENODEV);
+-        }
+-        Ok(StoreFile { handle })
++        Self::from_open_result(handle)
+     }
+ 
+     pub(crate) fn size(&self) -> Result<u64> {
